@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FL/1 Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #30363d;
+    --text:      #c9d1d9;
+    --muted:     #8b949e;
+    --blue:      #58a6ff;
+    --green:     #3fb950;
+    --orange:    #d29922;
+    --red:       #f85149;
+    --purple:    #bc8cff;
+    --radius:    8px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+    font-size: 13px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 15px; font-weight: 600; color: var(--blue); letter-spacing: .5px; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+
+  #ws-status {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+  }
+  #ws-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+    transition: background .3s;
+  }
+  #ws-dot.live { background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: .4; }
+  }
+
+  /* ── Layout ── */
+  .layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  aside {
+    width: 220px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-title {
+    padding: 12px 14px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+  }
+  #task-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .task-card {
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    cursor: pointer;
+    margin-bottom: 4px;
+    transition: background .15s, border-color .15s;
+  }
+  .task-card:hover { background: rgba(88,166,255,.06); }
+  .task-card.active { background: rgba(88,166,255,.12); border-color: var(--blue); }
+  .task-card.done { opacity: .6; }
+
+  .task-id { font-size: 12px; font-weight: 600; color: var(--text); font-family: monospace; }
+  .task-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .task-bar-wrap { margin-top: 6px; background: var(--border); border-radius: 3px; height: 3px; }
+  .task-bar { height: 3px; border-radius: 3px; background: var(--blue); transition: width .4s; }
+  .task-bar.done-bar { background: var(--green); }
+
+  .no-tasks { padding: 24px 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+  /* ── Main ── */
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    margin-bottom: 12px;
+  }
+
+  /* ── Charts row ── */
+  .charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .chart-wrap { position: relative; height: 180px; }
+
+  /* ── Round status ── */
+  #round-card { flex-shrink: 0; }
+  .round-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .round-label { font-size: 20px; font-weight: 700; color: var(--text); }
+  .round-sub { font-size: 12px; color: var(--muted); }
+  .round-progress { background: var(--border); border-radius: 4px; height: 6px; margin-bottom: 10px; }
+  .round-progress-fill { height: 6px; border-radius: 4px; background: var(--blue); transition: width .5s; }
+  .round-progress-fill.done { background: var(--green); }
+
+  .clients-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .client-chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    font-size: 11px;
+    background: var(--bg);
+  }
+  .client-chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .client-chip .dot.submitted { background: var(--green); }
+  .client-chip .dot.waiting   { background: var(--orange); animation: pulse 1.5s infinite; }
+  .client-chip .loss { color: var(--muted); margin-left: 2px; }
+
+  .empty-round { color: var(--muted); font-size: 12px; }
+
+  /* ── Event log ── */
+  #log-card { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  #log-card .card-title { margin-bottom: 8px; }
+  #log-scroll {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column-reverse;  /* newest at top */
+    gap: 2px;
+  }
+  .log-entry {
+    display: grid;
+    grid-template-columns: 56px 110px 1fr;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: monospace;
+    align-items: baseline;
+  }
+  .log-entry:hover { background: rgba(255,255,255,.03); }
+  .log-time { color: var(--muted); }
+  .log-type {
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    text-align: center;
+    font-size: 10px;
+  }
+  .log-type.round_complete  { background: rgba(63,185,80,.18);  color: var(--green);  }
+  .log-type.weights_received{ background: rgba(88,166,255,.15); color: var(--blue);   }
+  .log-type.task_created    { background: rgba(188,140,255,.18);color: var(--purple); }
+  .log-type.training_done   { background: rgba(63,185,80,.3);   color: var(--green);  }
+  .log-type.error           { background: rgba(248,81,73,.18);  color: var(--red);    }
+  .log-msg { color: var(--text); }
+
+  #empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    gap: 8px;
+  }
+  #empty-state .big { font-size: 36px; }
+  #empty-state p { font-size: 13px; }
+  #empty-state code { color: var(--blue); font-size: 12px; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>FL/1 <span>Federated Learning Dashboard</span></h1>
+  <div id="ws-status">
+    <div id="ws-dot"></div>
+    <span id="ws-label">Connecting…</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside>
+    <div class="sidebar-title">Tasks</div>
+    <div id="task-list">
+      <div class="no-tasks">No tasks yet.<br>Start the server to begin.</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main id="main-content">
+    <div id="empty-state">
+      <div class="big">⏳</div>
+      <p>Waiting for a task to start…</p>
+      <p>Start the server, then run clients:</p>
+      <code>python3 -m server.main --rounds 10 --min-clients 2</code>
+    </div>
+  </main>
+
+</div>
+
+<!-- Main content template (hidden, cloned when first task arrives) -->
+<template id="tpl-main">
+  <div class="charts-row">
+    <div class="card">
+      <div class="card-title">Training Loss</div>
+      <div class="chart-wrap"><canvas id="lossChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Test Accuracy (%)</div>
+      <div class="chart-wrap"><canvas id="accChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card" id="round-card">
+    <div class="card-title">Round Progress</div>
+    <div id="round-content"></div>
+  </div>
+
+  <div class="card" id="log-card">
+    <div class="card-title">Event Log</div>
+    <div id="log-scroll"></div>
+  </div>
+</template>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+const S = {
+  tasks: {},          // task_id → task object
+  selectedId: null,
+  logEntries: [],     // all log entries (newest first for display)
+  lossChart: null,
+  accChart: null,
+  mainMounted: false,
+};
+
+// task shape:
+// { task_id, max_rounds, min_clients, current_round, is_done,
+//   rounds: [{round, avg_loss, accuracy, num_clients}],
+//   pending: {client_id: {loss, num_samples}} }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event processing
+// ─────────────────────────────────────────────────────────────────────────────
+function processEvent(ev) {
+  if (ev.type === 'history') {
+    ev.events.forEach(processEvent);
+    return;
+  }
+  if (ev.type === 'ping') return;
+
+  // Log entry (newest first)
+  S.logEntries.unshift(ev);
+  if (S.logEntries.length > 300) S.logEntries.pop();
+
+  switch (ev.type) {
+    case 'task_created': {
+      S.tasks[ev.task_id] = {
+        task_id: ev.task_id,
+        max_rounds: ev.max_rounds,
+        min_clients: ev.min_clients,
+        current_round: 0,
+        is_done: false,
+        rounds: [],
+        pending: {},
+      };
+      if (!S.selectedId) S.selectedId = ev.task_id;
+      break;
+    }
+    case 'weights_received': {
+      const t = S.tasks[ev.task_id];
+      if (t) t.pending[ev.client_id] = { loss: ev.loss, num_samples: ev.num_samples };
+      break;
+    }
+    case 'round_complete': {
+      const t = S.tasks[ev.task_id];
+      if (t) {
+        t.rounds.push({ round: ev.round, avg_loss: ev.avg_loss, accuracy: ev.accuracy, num_clients: ev.num_clients });
+        t.current_round = ev.new_round;
+        t.pending = {};
+      }
+      break;
+    }
+    case 'training_done': {
+      const t = S.tasks[ev.task_id];
+      if (t) t.is_done = true;
+      break;
+    }
+  }
+
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render
+// ─────────────────────────────────────────────────────────────────────────────
+function render() {
+  renderSidebar();
+  if (!S.selectedId || !S.tasks[S.selectedId]) return;
+  ensureMainMounted();
+  renderCharts();
+  renderRound();
+  renderLog();
+}
+
+function renderSidebar() {
+  const list = document.getElementById('task-list');
+  const ids = Object.keys(S.tasks);
+  if (!ids.length) {
+    list.innerHTML = '<div class="no-tasks">No tasks yet.<br>Start the server to begin.</div>';
+    return;
+  }
+  list.innerHTML = ids.map(id => {
+    const t = S.tasks[id];
+    const pct = t.max_rounds ? Math.round(t.current_round / t.max_rounds * 100) : 0;
+    const active = id === S.selectedId ? 'active' : '';
+    const done   = t.is_done ? 'done' : '';
+    const barCls = t.is_done ? 'done-bar' : '';
+    const status = t.is_done
+      ? `<span style="color:var(--green)">✓ Done</span>`
+      : `Round ${t.current_round}/${t.max_rounds}`;
+    return `
+      <div class="task-card ${active} ${done}" onclick="selectTask('${id}')">
+        <div class="task-id">${id}</div>
+        <div class="task-meta">${status} · min ${t.min_clients} clients</div>
+        <div class="task-bar-wrap"><div class="task-bar ${barCls}" style="width:${pct}%"></div></div>
+      </div>`;
+  }).join('');
+}
+
+function selectTask(id) {
+  S.selectedId = id;
+  render();
+}
+
+function ensureMainMounted() {
+  if (S.mainMounted) return;
+  const main = document.getElementById('main-content');
+  const tpl  = document.getElementById('tpl-main');
+  main.innerHTML = '';
+  main.appendChild(tpl.content.cloneNode(true));
+  initCharts();
+  S.mainMounted = true;
+}
+
+// ── Charts ───────────────────────────────────────────────────────────────────
+const CHART_OPTS = (yLabel, color, suggestedMax) => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 300 },
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#1c2128',
+      borderColor: '#30363d',
+      borderWidth: 1,
+      titleColor: '#c9d1d9',
+      bodyColor: '#8b949e',
+    },
+  },
+  scales: {
+    x: {
+      ticks: { color: '#8b949e', font: { size: 10 } },
+      grid:  { color: '#21262d' },
+    },
+    y: {
+      ticks: { color: '#8b949e', font: { size: 10 } },
+      grid:  { color: '#21262d' },
+      title: { display: false },
+      suggestedMin: 0,
+      ...(suggestedMax ? { suggestedMax } : {}),
+    },
+  },
+});
+
+function makeDataset(color) {
+  return {
+    data: [],
+    borderColor: color,
+    backgroundColor: color + '22',
+    fill: true,
+    tension: 0.35,
+    pointRadius: 4,
+    pointHoverRadius: 6,
+    pointBackgroundColor: color,
+    borderWidth: 2,
+  };
+}
+
+function initCharts() {
+  S.lossChart = new Chart(document.getElementById('lossChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [makeDataset('#f97316')] },
+    options: CHART_OPTS('Loss', '#f97316', null),
+  });
+  S.accChart = new Chart(document.getElementById('accChart'), {
+    type: 'line',
+    data: { labels: [], datasets: [makeDataset('#22c55e')] },
+    options: CHART_OPTS('Accuracy %', '#22c55e', 100),
+  });
+}
+
+function renderCharts() {
+  const t = S.tasks[S.selectedId];
+  if (!t || !S.lossChart) return;
+
+  const labels = t.rounds.map(r => `R${r.round + 1}`);
+  const losses = t.rounds.map(r => r.avg_loss !== null ? +r.avg_loss.toFixed(4) : null);
+  const accs   = t.rounds.map(r => r.accuracy !== null ? +r.accuracy.toFixed(2) : null);
+
+  S.lossChart.data.labels = labels;
+  S.lossChart.data.datasets[0].data = losses;
+  S.lossChart.update('none');
+
+  S.accChart.data.labels = labels;
+  S.accChart.data.datasets[0].data = accs;
+  S.accChart.update('none');
+}
+
+// ── Round progress ────────────────────────────────────────────────────────────
+function renderRound() {
+  const t = S.tasks[S.selectedId];
+  const el = document.getElementById('round-content');
+  if (!el) return;
+
+  if (t.is_done) {
+    const lastAcc = t.rounds.length ? t.rounds[t.rounds.length - 1].accuracy : null;
+    el.innerHTML = `
+      <div class="round-header">
+        <span class="round-label" style="color:var(--green)">✓ Training Complete</span>
+        <span class="round-sub">${t.current_round} rounds finished${lastAcc !== null ? ` · final accuracy ${lastAcc}%` : ''}</span>
+      </div>
+      <div class="round-progress"><div class="round-progress-fill done" style="width:100%"></div></div>`;
+    return;
+  }
+
+  const pct = t.max_rounds ? Math.round(t.current_round / t.max_rounds * 100) : 0;
+  const submitted = Object.keys(t.pending).length;
+
+  // Who submitted this round?
+  const clientChips = Object.entries(t.pending).map(([cid, info]) => `
+    <div class="client-chip">
+      <div class="dot submitted"></div>
+      <span>${cid}</span>
+      ${info.loss !== null && info.loss !== undefined
+        ? `<span class="loss">loss ${(+info.loss).toFixed(4)}</span>`
+        : ''}
+    </div>`).join('');
+
+  // Placeholder for clients not yet submitted
+  const waiting = Math.max(0, t.min_clients - submitted);
+  const waitingChips = Array.from({length: waiting}, (_, i) => `
+    <div class="client-chip">
+      <div class="dot waiting"></div>
+      <span>waiting…</span>
+    </div>`).join('');
+
+  const lastRound = t.rounds[t.rounds.length - 1];
+  const prevAcc = lastRound ? `prev acc ${lastRound.accuracy}%` : 'no rounds yet';
+
+  el.innerHTML = `
+    <div class="round-header">
+      <span class="round-label">Round ${t.current_round + 1}</span>
+      <span class="round-sub">of ${t.max_rounds} · ${prevAcc}</span>
+      <span class="round-sub">${submitted}/${t.min_clients} clients submitted</span>
+    </div>
+    <div class="round-progress">
+      <div class="round-progress-fill" style="width:${pct}%"></div>
+    </div>
+    <div class="clients-grid">
+      ${clientChips}
+      ${waitingChips}
+    </div>`;
+}
+
+// ── Event log ─────────────────────────────────────────────────────────────────
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  return d.toTimeString().slice(0, 8);
+}
+
+function fmtMsg(ev) {
+  switch (ev.type) {
+    case 'task_created':
+      return `${ev.task_id} created — ${ev.max_rounds} rounds, min ${ev.min_clients} clients`;
+    case 'weights_received':
+      return `${ev.task_id} · round ${ev.round} · client <b>${ev.client_id}</b>` +
+        (ev.loss !== null && ev.loss !== undefined ? ` · loss <b>${(+ev.loss).toFixed(4)}</b>` : '') +
+        (ev.num_samples ? ` · ${ev.num_samples} samples` : '');
+    case 'round_complete':
+      return `${ev.task_id} · round <b>${ev.round + 1}</b> ✓` +
+        (ev.avg_loss  !== null && ev.avg_loss  !== undefined ? ` · avg_loss <b>${(+ev.avg_loss).toFixed(4)}</b>`  : '') +
+        (ev.accuracy  !== null && ev.accuracy  !== undefined ? ` · accuracy <b>${ev.accuracy}%</b>` : '');
+    case 'training_done':
+      return `${ev.task_id} training done — ${ev.total_rounds} rounds` +
+        (ev.final_accuracy ? ` · final accuracy <b>${ev.final_accuracy}%</b>` : '');
+    default:
+      return JSON.stringify(ev);
+  }
+}
+
+function renderLog() {
+  const el = document.getElementById('log-scroll');
+  if (!el) return;
+  const relevant = S.logEntries.filter(e =>
+    !S.selectedId || !e.task_id || e.task_id === S.selectedId
+  ).slice(0, 100);
+  el.innerHTML = relevant.map(ev => `
+    <div class="log-entry">
+      <span class="log-time">${fmtTime(ev.ts)}</span>
+      <span class="log-type ${ev.type}">${ev.type}</span>
+      <span class="log-msg">${fmtMsg(ev)}</span>
+    </div>`).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WebSocket
+// ─────────────────────────────────────────────────────────────────────────────
+let wsRetryDelay = 1000;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    document.getElementById('ws-dot').classList.add('live');
+    document.getElementById('ws-label').textContent = 'Live';
+    wsRetryDelay = 1000;
+  };
+
+  ws.onmessage = ({ data }) => {
+    try { processEvent(JSON.parse(data)); } catch(e) {}
+  };
+
+  ws.onclose = ws.onerror = () => {
+    document.getElementById('ws-dot').classList.remove('live');
+    document.getElementById('ws-label').textContent = 'Reconnecting…';
+    setTimeout(connect, wsRetryDelay);
+    wsRetryDelay = Math.min(wsRetryDelay * 2, 10000);
+  };
+}
+
+connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+version: "3.9"
+
+# ─── Shared MNIST dataset volume ──────────────────────────────────────────────
+# Downloaded once on first run, reused by all containers.
+volumes:
+  mnist-data: {}
+
+# ─── Internal network ─────────────────────────────────────────────────────────
+networks:
+  fl-net:
+    driver: bridge
+
+# ─── Memory budget summary ────────────────────────────────────────────────────
+#   server-primary  768 MB  — FL server + monitor dashboard, holds global model
+#   server-backup   512 MB  — standby only; activates after primary failure
+#   client-0        1 GB    — local training (PyTorch + MNIST shard + gradients)
+#   client-1        1 GB    — same
+# ─── Total: ~3.3 GB ───────────────────────────────────────────────────────────
+
+services:
+
+  # ── Primary FL server ─────────────────────────────────────────────────────
+  server-primary:
+    build: .
+    container_name: fl-primary
+    command: >
+      python3 -m server.main
+        --role primary
+        --port 9000
+        --backup-repl-addr server-backup:10100
+        --rounds 10
+        --min-clients 2
+        --monitor-port 8080
+    ports:
+      - "9000:9000"   # FL/1 protocol (clients)
+      - "8080:8080"   # Web dashboard
+    mem_limit: 768m
+    memswap_limit: 768m   # disable swap → OOM kills instead of slow thrashing
+    volumes:
+      - mnist-data:/root/.fl_mnist_data
+    networks:
+      - fl-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',9000)); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s    # give time for torch import on first start
+
+  # ── Backup FL server ──────────────────────────────────────────────────────
+  server-backup:
+    build: .
+    container_name: fl-backup
+    command: >
+      python3 -m server.main
+        --role backup
+        --port 9100
+        --repl-port 10100
+    ports:
+      - "9100:9100"   # FL/1 protocol (activated after promotion)
+    mem_limit: 512m
+    memswap_limit: 512m
+    volumes:
+      - mnist-data:/root/.fl_mnist_data
+    networks:
+      - fl-net
+    restart: unless-stopped
+    depends_on:
+      - server-primary
+
+  # ── Client 0 ──────────────────────────────────────────────────────────────
+  client-0:
+    build: .
+    container_name: fl-client-0
+    command: >
+      python3 -m client.main
+        --servers server-primary:9000 server-backup:9100
+        --auto-join
+        --client-id 0
+        --num-clients 2
+        --epochs 1
+        --lr 0.01
+    mem_limit: 1g
+    memswap_limit: 1g
+    volumes:
+      - mnist-data:/root/.fl_mnist_data
+    networks:
+      - fl-net
+    depends_on:
+      server-primary:
+        condition: service_healthy
+    restart: "no"   # clients run once and exit
+
+  # ── Client 1 ──────────────────────────────────────────────────────────────
+  client-1:
+    build: .
+    container_name: fl-client-1
+    command: >
+      python3 -m client.main
+        --servers server-primary:9000 server-backup:9100
+        --auto-join
+        --client-id 1
+        --num-clients 2
+        --epochs 1
+        --lr 0.01
+    mem_limit: 1g
+    memswap_limit: 1g
+    volumes:
+      - mnist-data:/root/.fl_mnist_data
+    networks:
+      - fl-net
+    depends_on:
+      server-primary:
+        condition: service_healthy
+    restart: "no"
