@@ -1,2 +1,2 @@
 # Ссылки
-Демонстрация: https://drive.google.com/drive/folders/1Nnqo5IVQJrXQTl7XNfS-tZfLPDuaDlp2?usp=drive_link
+Демонстрация: https://drive.google.com/file/d/18a93fzbVzJ9zF5fZ8zz44f_KKmHHHptr/view?usp=sharing
