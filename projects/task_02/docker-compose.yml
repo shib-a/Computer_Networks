@@ -88,9 +88,6 @@ services:
       - mnist-data:/root/.fl_mnist_data
     networks:
       - fl-net
-    depends_on:
-      server-primary:
-        condition: service_healthy
     restart: "no"   # clients run once and exit
 
   # ── Client 1 ──────────────────────────────────────────────────────────────
@@ -111,7 +108,4 @@ services:
       - mnist-data:/root/.fl_mnist_data
     networks:
       - fl-net
-    depends_on:
-      server-primary:
-        condition: service_healthy
     restart: "no"
